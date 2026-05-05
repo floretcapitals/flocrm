@@ -1,8 +1,9 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { PKR, totalDeposit } from '@/lib/commission'
 import type { Lead, Profile } from '@/types'
+
+const PKR = (n: number) => 'PKR ' + Math.round(n).toLocaleString()
 
 const STAGES = [
   { key: 'new', label: 'New', color: 'bg-blue-50 text-blue-800 border-blue-100' },
@@ -62,16 +63,21 @@ export default function PipelinePage() {
   const isAm = myProfile?.role === 'am'
   const bdos = profiles.filter(p => p.role === 'bdo')
   const ams = profiles.filter(p => p.role === 'am')
-  const memberName = (id: string | null) => profiles.find(p => p.id === id)?.name ?? '—'
+  const memberName = (id: string | null) => profiles.find(p => p.id === id)?.name ?? '-'
+
+  const amBdoIds = amFilter
+    ? profiles.filter(p => p.role === 'bdo' && p.reports_to === amFilter).map(p => p.id)
+    : []
 
   const filtered = leads.filter(l => {
     if (search && !l.name.toLowerCase().includes(search.toLowerCase())) return false
     if (bdoFilter && l.bdo_id !== bdoFilter) return false
-    if (amFilter && l.am_id !== amFilter) return false
+    if (amFilter && l.am_id !== amFilter && !amBdoIds.includes(l.bdo_id || '')) return false
     return true
   })
 
   const totalDep = (lead: Lead) => (lead.deposits || []).reduce((s, d) => s + d.amount, 0)
+  const hasActiveFilters = bdoFilter || amFilter || search
 
   return (
     <div>
@@ -104,7 +110,7 @@ export default function PipelinePage() {
             {ams.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         )}
-        {(bdoFilter || amFilter || search) && (
+        {hasActiveFilters && (
           <button
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50"
             onClick={() => { setBdoFilter(''); setAmFilter(''); setSearch('') }}>
@@ -134,22 +140,28 @@ export default function PipelinePage() {
                   <div key={lead.id}
                     className="bg-white border border-gray-200 rounded-xl p-3 hover:border-gray-300 transition-colors">
                     <div className="font-medium text-sm mb-0.5">{lead.name}</div>
-                    <div className="text-xs text-gray-400 mb-1">{lead.city || '—'}</div>
+                    <div className="text-xs text-gray-400 mb-1">{lead.city || '-'}</div>
                     {(isAdmin || isAm) && (
-                      <div className="text-xs text-gray-400 mb-1">{memberName(lead.bdo_id)}</div>
+                      <div className="text-xs text-gray-400 mb-1">
+                        BDO: {memberName(lead.bdo_id)}
+                      </div>
+                    )}
+                    {isAdmin && lead.am_id && (
+                      <div className="text-xs text-gray-400 mb-1">
+                        AM: {memberName(lead.am_id)}
+                      </div>
                     )}
                     {totalDep(lead) > 0 && (
                       <div className="text-xs font-medium text-blue-600 mb-2">
                         {PKR(totalDep(lead))}
                       </div>
                     )}
-                    {/* Stage move buttons */}
                     <div className="flex gap-1 flex-wrap mt-2">
                       {STAGES.filter(s => s.key !== stage.key).map(s => (
                         <button key={s.key}
                           onClick={() => moveStage(lead, s.key)}
                           className="text-xs px-1.5 py-0.5 rounded border border-gray-200 text-gray-500 hover:bg-gray-50">
-                          → {s.label.split(' ')[0]}
+                          {s.label.split(' ')[0]}
                         </button>
                       ))}
                     </div>
