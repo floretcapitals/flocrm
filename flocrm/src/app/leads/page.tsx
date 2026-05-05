@@ -79,11 +79,15 @@ export default function LeadsPage() {
   const ams = profiles.filter(p => p.role === 'am')
   const analysts = profiles.filter(p => p.role === 'trading')
 
+  const amBdoIds = amFilter
+    ? profiles.filter(p => p.role === 'bdo' && p.reports_to === amFilter).map(p => p.id)
+    : []
+
   const filtered = leads.filter(l => {
     if (search && !l.name.toLowerCase().includes(search.toLowerCase())) return false
     if (stageFilter && l.stage !== stageFilter) return false
     if (bdoFilter && l.bdo_id !== bdoFilter) return false
-    if (amFilter && l.am_id !== amFilter) return false
+    if (amFilter && l.am_id !== amFilter && !amBdoIds.includes(l.bdo_id || '')) return false
     return true
   })
 
@@ -207,7 +211,6 @@ export default function LeadsPage() {
   const isAdmin = myProfile?.role === 'admin'
   const isAm = myProfile?.role === 'am'
   const isBdo = myProfile?.role === 'bdo'
-
   const hasActiveFilters = bdoFilter || amFilter || stageFilter || search
 
   return (
@@ -341,7 +344,6 @@ export default function LeadsPage() {
         )}
       </div>
 
-      {/* Results count */}
       <div className="text-xs text-gray-400 mb-3">
         {filtered.length} lead{filtered.length !== 1 ? 's' : ''} found
       </div>
@@ -509,7 +511,6 @@ export default function LeadsPage() {
                 value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
 
-            {/* Deposits */}
             <div className="border-t border-gray-100 pt-4 mb-4">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Deposits</div>
               {deposits.map((d, i) => (
