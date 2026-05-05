@@ -26,6 +26,7 @@ export default function LeadsPage() {
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
   const [bdoFilter, setBdoFilter] = useState('')
+  const [amFilter, setAmFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editLead, setEditLead] = useState<Lead | null>(null)
   const [loading, setLoading] = useState(false)
@@ -82,6 +83,7 @@ export default function LeadsPage() {
     if (search && !l.name.toLowerCase().includes(search.toLowerCase())) return false
     if (stageFilter && l.stage !== stageFilter) return false
     if (bdoFilter && l.bdo_id !== bdoFilter) return false
+    if (amFilter && l.am_id !== amFilter) return false
     return true
   })
 
@@ -206,6 +208,8 @@ export default function LeadsPage() {
   const isAm = myProfile?.role === 'am'
   const isBdo = myProfile?.role === 'bdo'
 
+  const hasActiveFilters = bdoFilter || amFilter || stageFilter || search
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -228,6 +232,7 @@ export default function LeadsPage() {
         </div>
       </div>
 
+      {/* CSV Preview */}
       {uploadMode && (
         <div className="bg-white border border-gray-200 rounded-xl p-4 mb-4">
           <div className="flex items-center justify-between mb-3">
@@ -296,6 +301,7 @@ export default function LeadsPage() {
         </div>
       )}
 
+      {/* Filters */}
       <div className="flex gap-2 mb-4 flex-wrap">
         <div className="relative flex-1 min-w-36">
           <Search size={14} className="absolute left-2.5 top-2.5 text-gray-400" />
@@ -318,18 +324,45 @@ export default function LeadsPage() {
             {bdos.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
           </select>
         )}
+        {isAdmin && (
+          <select
+            className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none"
+            value={amFilter} onChange={e => setAmFilter(e.target.value)}>
+            <option value="">All AMs</option>
+            {ams.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+          </select>
+        )}
+        {hasActiveFilters && (
+          <button
+            className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50"
+            onClick={() => { setSearch(''); setStageFilter(''); setBdoFilter(''); setAmFilter('') }}>
+            Clear filters
+          </button>
+        )}
       </div>
 
+      {/* Results count */}
+      <div className="text-xs text-gray-400 mb-3">
+        {filtered.length} lead{filtered.length !== 1 ? 's' : ''} found
+      </div>
+
+      {/* Table */}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         <table className="w-full text-sm" style={{ tableLayout: 'fixed' }}>
           <thead>
             <tr className="bg-gray-50">
               <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '22%' }}>Client</th>
               <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '13%' }}>Stage</th>
-              {(isAdmin || isAm) && <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '13%' }}>BDO</th>}
-              <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '15%' }}>Total Deposit</th>
-              {isAdmin && <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '12%' }}>AM</th>}
-              {isAdmin && <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '12%' }}>Analyst</th>}
+              {(isAdmin || isAm) && (
+                <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '12%' }}>BDO</th>
+              )}
+              {isAdmin && (
+                <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '12%' }}>AM</th>
+              )}
+              <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '14%' }}>Total Deposit</th>
+              {isAdmin && (
+                <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '11%' }}>Analyst</th>
+              )}
               <th className="px-3 py-2.5 text-left text-xs text-gray-400 font-medium" style={{ width: '10%' }}>Updated</th>
               <th style={{ width: '8%' }}></th>
             </tr>
@@ -351,11 +384,15 @@ export default function LeadsPage() {
                 {(isAdmin || isAm) && (
                   <td className="px-3 py-2.5 text-gray-600 text-xs">{memberName(lead.bdo_id)}</td>
                 )}
+                {isAdmin && (
+                  <td className="px-3 py-2.5 text-gray-600 text-xs">{memberName(lead.am_id)}</td>
+                )}
                 <td className={`px-3 py-2.5 text-xs font-medium ${totalDeposit(lead) ? 'text-blue-600' : 'text-gray-400'}`}>
                   {totalDeposit(lead) ? PKR(totalDeposit(lead)) : '-'}
                 </td>
-                {isAdmin && <td className="px-3 py-2.5 text-gray-600 text-xs">{memberName(lead.am_id)}</td>}
-                {isAdmin && <td className="px-3 py-2.5 text-gray-600 text-xs">{memberName(lead.analyst_id)}</td>}
+                {isAdmin && (
+                  <td className="px-3 py-2.5 text-gray-600 text-xs">{memberName(lead.analyst_id)}</td>
+                )}
                 <td className="px-3 py-2.5 text-gray-400 text-xs">
                   {new Date(lead.updated_at).toLocaleDateString()}
                 </td>
@@ -379,6 +416,7 @@ export default function LeadsPage() {
         </table>
       </div>
 
+      {/* Lead Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 px-4"
           style={{ background: 'rgba(0,0,0,0.35)' }}>
@@ -471,15 +509,18 @@ export default function LeadsPage() {
                 value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
 
+            {/* Deposits */}
             <div className="border-t border-gray-100 pt-4 mb-4">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Deposits</div>
               {deposits.map((d, i) => (
-                <div key={d.id} className="flex items-center justify-between py-1.5 text-sm border-b border-gray-50">
+                <div key={d.id} className="flex items-center justify-between py-1.5 border-b border-gray-50">
                   <span className="text-gray-500 text-xs">{d.deposit_date}</span>
                   <span className="font-medium text-blue-600 text-xs">{PKR(d.amount)}</span>
                   {d.id.startsWith('tmp_') && (
-                    <button className="text-red-400 hover:text-red-600 text-xs"
-                      onClick={() => setDeposits(deps => deps.filter((_, j) => j !== i))}>x</button>
+                    <button className="text-red-400 hover:text-red-600 text-xs ml-2"
+                      onClick={() => setDeposits(deps => deps.filter((_, j) => j !== i))}>
+                      Remove
+                    </button>
                   )}
                 </div>
               ))}
@@ -489,26 +530,38 @@ export default function LeadsPage() {
                 </div>
               )}
               <div className="flex gap-2 mt-3">
-                <input className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                <input
+                  className="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                   type="number" placeholder="Amount (PKR)"
                   value={newDep.amount} onChange={e => setNewDep(d => ({ ...d, amount: e.target.value }))} />
-                <input className="w-36 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                <input
+                  className="w-36 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
                   type="date" value={newDep.date}
                   onChange={e => setNewDep(d => ({ ...d, date: e.target.value }))} />
-                <button className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50"
-                  onClick={addDeposit}>Add</button>
+                <button
+                  className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-600 hover:bg-gray-50"
+                  onClick={addDeposit}>
+                  Add
+                </button>
               </div>
             </div>
 
             <div className="flex items-center justify-between pt-3 border-t border-gray-100">
               {editLead && (
-                <button className="px-3 py-1.5 border border-red-200 text-red-700 rounded-lg text-xs hover:bg-red-50"
-                  onClick={deleteLead}>Delete lead</button>
+                <button
+                  className="px-3 py-1.5 border border-red-200 text-red-700 rounded-lg text-xs hover:bg-red-50"
+                  onClick={deleteLead}>
+                  Delete lead
+                </button>
               )}
               <div className="flex gap-2 ml-auto">
-                <button className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50"
-                  onClick={() => setShowModal(false)}>Cancel</button>
-                <button className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
+                <button
+                  className="px-3 py-1.5 border border-gray-200 text-gray-600 rounded-lg text-xs hover:bg-gray-50"
+                  onClick={() => setShowModal(false)}>
+                  Cancel
+                </button>
+                <button
+                  className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700 disabled:opacity-50"
                   onClick={saveLead} disabled={loading}>
                   {loading ? 'Saving...' : 'Save'}
                 </button>
