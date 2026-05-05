@@ -234,7 +234,7 @@ export default function LeadsPage() {
             <div>
               <div className="text-sm font-medium">{csvRows.length} rows detected</div>
               <div className="text-xs text-gray-400 mt-0.5">
-                All leads will be uploaded without a BDO - assign via Admin > Lead Distribution
+                {'All leads will be uploaded without a BDO - assign via Admin > Lead Distribution'}
               </div>
             </div>
             <div className="flex gap-2">
