@@ -13,7 +13,8 @@ const ROLE_NAV: Record<string, { label: string; href: string }[]> = {
   ],
   am: [
     { label: 'Dashboard', href: '/dashboard' },
-    { label: 'Leads', href: '/leads' },
+    { label: 'My Leads', href: '/my-leads' },
+    { label: 'Team Leads', href: '/leads' },
     { label: 'Pipeline', href: '/pipeline' },
     { label: 'Commission', href: '/commission' },
     { label: 'My Team', href: '/team' },

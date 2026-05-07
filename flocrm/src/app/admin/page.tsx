@@ -4,8 +4,16 @@ import { createClient } from '@/lib/supabase/client'
 import { buildPool, distribute } from '@/lib/distribution'
 import type { CommissionSettings, BdoTier, AmTier, TaTier, Profile, DistributionConfig, Lead } from '@/types'
 
+interface AmDistConfig {
+  am_id: string
+  weight: number
+  is_paused: boolean
+  am?: Profile
+}
+
 export default function AdminPage() {
   const [tab, setTab] = useState<'commission'|'distribution'|'trading_comm'>('commission')
+  const [distSubTab, setDistSubTab] = useState<'bdo'|'am'>('bdo')
   const [settings, setSettings] = useState<CommissionSettings | null>(null)
   const [bdoTiers, setBdoTiers] = useState<BdoTier[]>([])
   const [amTiers, setAmTiers] = useState<AmTier[]>([])
@@ -15,6 +23,11 @@ export default function AdminPage() {
   const [distPointer, setDistPointer] = useState(0)
   const [unassigned, setUnassigned] = useState<Lead[]>([])
   const [assignments, setAssignments] = useState<Record<string,string>>({})
+  const [amDistConfigs, setAmDistConfigs] = useState<AmDistConfig[]>([])
+  const [amDistMode, setAmDistMode] = useState<'roundrobin'|'weighted'>('roundrobin')
+  const [amDistPointer, setAmDistPointer] = useState(0)
+  const [unassignedAm, setUnassignedAm] = useState<Lead[]>([])
+  const [amAssignments, setAmAssignments] = useState<Record<string,string>>({})
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [tcMonth, setTcMonth] = useState(new Date().toISOString().slice(0,7))
   const [tcData, setTcData] = useState<Record<string, Record<string, number>>>({})
@@ -25,7 +38,7 @@ export default function AdminPage() {
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
   const fetchAll = useCallback(async () => {
-    const [{ data: s }, { data: bt }, { data: at }, { data: tt }, { data: dc }, { data: ds }, { data: ul }, { data: pr }] = await Promise.all([
+    const [{ data: s }, { data: bt }, { data: at }, { data: tt }, { data: dc }, { data: ds }, { data: ul }, { data: pr }, { data: ual }] = await Promise.all([
       supabase.from('commission_settings').select('*').single(),
       supabase.from('commission_bdo_tiers').select('*').order('sort_order'),
       supabase.from('commission_am_tiers').select('*'),
@@ -34,6 +47,7 @@ export default function AdminPage() {
       supabase.from('distribution_state').select('*').eq('id', 1).single(),
       supabase.from('leads').select('*').is('bdo_id', null),
       supabase.from('profiles').select('*').eq('is_active', true),
+      supabase.from('leads').select('*').is('am_id', null).eq('stage', 'am_handling'),
     ])
     if (s) setSettings(s as CommissionSettings)
     setBdoTiers((bt || []) as BdoTier[])
@@ -41,14 +55,17 @@ export default function AdminPage() {
     setTaTiers((tt || []) as TaTier[])
     setProfiles((pr || []) as Profile[])
     setUnassigned((ul || []) as Lead[])
+    setUnassignedAm((ual || []) as Lead[])
 
     const bdos = ((pr || []) as Profile[]).filter(p => p.role === 'bdo')
+    const ams = ((pr || []) as Profile[]).filter(p => p.role === 'am')
     const configs = (dc || []) as any[]
     const merged: DistributionConfig[] = bdos.map(b => {
       const cfg = configs.find(c => c.bdo_id === b.id)
       return cfg ? { ...cfg, bdo: b } : { bdo_id: b.id, weight: 1, is_paused: false, bdo: b }
     })
     setDistConfigs(merged)
+    setAmDistConfigs(ams.map(a => ({ am_id: a.id, weight: 1, is_paused: false, am: a })))
     if (ds) { setDistMode((ds as any).mode); setDistPointer((ds as any).global_pointer || 0) }
   }, [])
 
@@ -112,6 +129,32 @@ export default function AdminPage() {
     fetchAll()
     await supabase.from('distribution_state').update({ global_pointer: distPointer }).eq('id', 1)
     showToast(`${entries.length} leads assigned`)
+  }
+
+  function distributeAllAm() {
+    const leadIds = unassignedAm.map(l => l.id)
+    const active = amDistConfigs.filter(c => !c.is_paused && c.weight > 0)
+    if (!active.length) return
+    const pool = amDistMode === 'roundrobin' ? active : active.flatMap(c => Array(c.weight).fill(c))
+    const map: Record<string, string> = {}
+    let ptr = amDistPointer % pool.length
+    for (const lid of leadIds) {
+      map[lid] = pool[ptr].am_id
+      ptr = (ptr + 1) % pool.length
+    }
+    setAmAssignments(map)
+    setAmDistPointer(ptr)
+  }
+
+  async function confirmAmDistribution() {
+    const entries = Object.entries(amAssignments)
+    if (!entries.length) return
+    await Promise.all(entries.map(([lead_id, am_id]) =>
+      supabase.from('leads').update({ am_id }).eq('id', lead_id)
+    ))
+    setAmAssignments({})
+    fetchAll()
+    showToast(`${entries.length} leads assigned to AMs`)
   }
 
   async function saveTcEntry(analystId: string, leadId: string, val: number) {
@@ -237,90 +280,210 @@ export default function AdminPage() {
       {/* ── DISTRIBUTION ── */}
       {tab === 'distribution' && (
         <div>
-          <div className="card mb-4">
-            <div className="card-title">Distribution mode</div>
-            <div className="flex gap-2 mb-4">
-              {(['roundrobin','weighted'] as const).map(m => (
-                <button key={m} onClick={() => setDistMode(m)}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${distMode===m ? 'bg-brand text-white border-brand' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
-                  {m === 'roundrobin' ? 'Round Robin (equal)' : 'Weighted'}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              {distConfigs.map((cfg, i) => {
-                const active = distConfigs.filter(c => !c.is_paused && c.weight > 0)
-                const totalW = active.reduce((s,c) => s+c.weight, 0) || 1
-                const share = cfg.is_paused ? 0 : Math.round(cfg.weight / totalW * 100)
-                return (
-                  <div key={cfg.bdo_id} className={`border rounded-xl p-4 ${cfg.is_paused ? 'opacity-50 border-gray-200' : 'border-gray-200'}`}>
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <div className="font-medium text-sm">{cfg.bdo?.name}</div>
-                        <div className="text-xs text-gray-400">{cfg.is_paused ? 'Paused — no leads' : `~${share}% of leads`}</div>
-                      </div>
-                      <button className={`btn-secondary text-xs ${cfg.is_paused ? 'text-green-700' : ''}`}
-                        onClick={() => { const n=[...distConfigs]; n[i]={...n[i], is_paused:!cfg.is_paused, weight: !cfg.is_paused ? 0 : 1}; setDistConfigs(n) }}>
-                        {cfg.is_paused ? 'Resume' : 'Pause'}
-                      </button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-gray-500 w-12">Weight</span>
-                      <input type="range" min="0" max="10" step="1" value={cfg.weight}
-                        className="flex-1"
-                        onChange={e => { const n=[...distConfigs]; const w=+e.target.value; n[i]={...n[i], weight:w, is_paused:w===0}; setDistConfigs(n) }} />
-                      <span className="text-sm font-medium text-brand w-4">{cfg.weight}</span>
-                    </div>
-                    <div className="mt-2 h-1 bg-gray-100 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full ${cfg.is_paused ? 'bg-red-300' : 'bg-brand'}`} style={{ width: `${cfg.is_paused ? 100 : share}%` }} />
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-            <div className="flex gap-2 mt-4">
-              <button className="btn-secondary" onClick={saveDistribution}>Save settings</button>
-            </div>
+          {/* Sub-tabs */}
+          <div className="flex gap-1 mb-5 border-b border-gray-200">
+            {([['bdo', 'BDO Distribution'], ['am', 'AM Distribution']] as const).map(([key, label]) => (
+              <button key={key} onClick={() => setDistSubTab(key)}
+                className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${distSubTab===key ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700'}`}>
+                {label}
+                {key === 'am' && unassignedAm.length > 0 && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded text-xs">{unassignedAm.length}</span>
+                )}
+                {key === 'bdo' && unassigned.length > 0 && (
+                  <span className="ml-2 px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded text-xs">{unassigned.length}</span>
+                )}
+              </button>
+            ))}
           </div>
 
-          <div className="card">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <div className="font-medium text-sm">Unassigned leads ({unassigned.length})</div>
-                <div className="text-xs text-gray-400 mt-0.5">Leads without a BDO assigned</div>
-              </div>
-              <div className="flex gap-2">
-                {Object.keys(assignments).length > 0 && (
-                  <button className="btn-success" onClick={confirmDistribution}>Confirm {Object.keys(assignments).length} assignments</button>
-                )}
-                <button className="btn-primary" onClick={distributeAll} disabled={!unassigned.length || !distConfigs.some(c=>!c.is_paused)}>Distribute all</button>
-              </div>
-            </div>
-            <div className="table-wrap">
-              <table className="data">
-                <thead><tr><th>Client</th><th>City</th><th>Source</th><th>Assigned to</th></tr></thead>
-                <tbody>
-                  {unassigned.map(l => (
-                    <tr key={l.id}>
-                      <td className="font-medium">{l.name}</td>
-                      <td className="text-gray-500">{l.city||'—'}</td>
-                      <td className="text-gray-500">{l.source||'—'}</td>
-                      <td>
-                        {assignments[l.id]
-                          ? <span className="text-brand font-medium text-sm">{memberName(assignments[l.id])}</span>
-                          : <select className="input py-1 text-xs" onChange={e => setAssignments(a=>({...a, [l.id]: e.target.value}))}>
-                              <option value="">— Assign manually —</option>
-                              {bdos.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                            </select>
-                        }
-                      </td>
-                    </tr>
+          {/* ── BDO Distribution ── */}
+          {distSubTab === 'bdo' && (
+            <div>
+              <div className="card mb-4">
+                <div className="card-title">Distribution mode</div>
+                <div className="flex gap-2 mb-4">
+                  {(['roundrobin','weighted'] as const).map(m => (
+                    <button key={m} onClick={() => setDistMode(m)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${distMode===m ? 'bg-brand text-white border-brand' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      {m === 'roundrobin' ? 'Round Robin (equal)' : 'Weighted'}
+                    </button>
                   ))}
-                  {!unassigned.length && <tr><td colSpan={4} className="text-center py-8 text-gray-400">All leads are assigned</td></tr>}
-                </tbody>
-              </table>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {distConfigs.map((cfg, i) => {
+                    const active = distConfigs.filter(c => !c.is_paused && c.weight > 0)
+                    const totalW = active.reduce((s,c) => s+c.weight, 0) || 1
+                    const share = cfg.is_paused ? 0 : Math.round(cfg.weight / totalW * 100)
+                    return (
+                      <div key={cfg.bdo_id} className={`border rounded-xl p-4 ${cfg.is_paused ? 'opacity-50 border-gray-200' : 'border-gray-200'}`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <div className="font-medium text-sm">{cfg.bdo?.name}</div>
+                            <div className="text-xs text-gray-400">{cfg.is_paused ? 'Paused — no leads' : `~${share}% of leads`}</div>
+                          </div>
+                          <button className={`btn-secondary text-xs ${cfg.is_paused ? 'text-green-700' : ''}`}
+                            onClick={() => { const n=[...distConfigs]; n[i]={...n[i], is_paused:!cfg.is_paused, weight: !cfg.is_paused ? 0 : 1}; setDistConfigs(n) }}>
+                            {cfg.is_paused ? 'Resume' : 'Pause'}
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 w-12">Weight</span>
+                          <input type="range" min="0" max="10" step="1" value={cfg.weight}
+                            className="flex-1"
+                            onChange={e => { const n=[...distConfigs]; const w=+e.target.value; n[i]={...n[i], weight:w, is_paused:w===0}; setDistConfigs(n) }} />
+                          <span className="text-sm font-medium text-brand w-4">{cfg.weight}</span>
+                        </div>
+                        <div className="mt-2 h-1 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${cfg.is_paused ? 'bg-red-300' : 'bg-brand'}`} style={{ width: `${cfg.is_paused ? 100 : share}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <button className="btn-secondary" onClick={saveDistribution}>Save settings</button>
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="font-medium text-sm">Unassigned leads ({unassigned.length})</div>
+                    <div className="text-xs text-gray-400 mt-0.5">Leads without a BDO assigned</div>
+                  </div>
+                  <div className="flex gap-2">
+                    {Object.keys(assignments).length > 0 && (
+                      <button className="btn-success" onClick={confirmDistribution}>Confirm {Object.keys(assignments).length} assignments</button>
+                    )}
+                    <button className="btn-primary" onClick={distributeAll} disabled={!unassigned.length || !distConfigs.some(c=>!c.is_paused)}>Distribute all</button>
+                  </div>
+                </div>
+                <div className="table-wrap">
+                  <table className="data">
+                    <thead><tr><th>Client</th><th>City</th><th>Source</th><th>Assigned to</th></tr></thead>
+                    <tbody>
+                      {unassigned.map(l => (
+                        <tr key={l.id}>
+                          <td className="font-medium">{l.name}</td>
+                          <td className="text-gray-500">{l.city||'—'}</td>
+                          <td className="text-gray-500">{l.source||'—'}</td>
+                          <td>
+                            {assignments[l.id]
+                              ? <span className="text-brand font-medium text-sm">{memberName(assignments[l.id])}</span>
+                              : <select className="input py-1 text-xs" onChange={e => setAssignments(a=>({...a, [l.id]: e.target.value}))}>
+                                  <option value="">— Assign manually —</option>
+                                  {bdos.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                                </select>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                      {!unassigned.length && <tr><td colSpan={4} className="text-center py-8 text-gray-400">All leads are assigned</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
+
+          {/* ── AM Distribution ── */}
+          {distSubTab === 'am' && (
+            <div>
+              <div className="card mb-4">
+                <div className="card-title flex items-center gap-2">
+                  <div className="w-2 h-2 rounded-full bg-purple-500"></div>
+                  AM Distribution mode
+                </div>
+                <div className="text-xs text-gray-500 bg-purple-50 px-3 py-2 rounded-lg mb-4">
+                  Distribute leads at <span className="font-medium text-purple-700">AM Handling</span> stage (without an assigned AM) to your Account Managers.
+                </div>
+                <div className="flex gap-2 mb-4">
+                  {(['roundrobin','weighted'] as const).map(m => (
+                    <button key={m} onClick={() => setAmDistMode(m)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${amDistMode===m ? 'bg-purple-600 text-white border-purple-600' : 'border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                      {m === 'roundrobin' ? 'Round Robin (equal)' : 'Weighted'}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {amDistConfigs.map((cfg, i) => {
+                    const active = amDistConfigs.filter(c => !c.is_paused && c.weight > 0)
+                    const totalW = active.reduce((s,c) => s+c.weight, 0) || 1
+                    const share = cfg.is_paused ? 0 : Math.round(cfg.weight / totalW * 100)
+                    return (
+                      <div key={cfg.am_id} className={`border rounded-xl p-4 ${cfg.is_paused ? 'opacity-50 border-gray-200' : 'border-gray-200'}`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <div>
+                            <div className="font-medium text-sm">{cfg.am?.name}</div>
+                            <div className="text-xs text-gray-400">{cfg.is_paused ? 'Paused — no leads' : `~${share}% of leads`}</div>
+                          </div>
+                          <button className={`btn-secondary text-xs ${cfg.is_paused ? 'text-green-700' : ''}`}
+                            onClick={() => { const n=[...amDistConfigs]; n[i]={...n[i], is_paused:!cfg.is_paused, weight: !cfg.is_paused ? 0 : 1}; setAmDistConfigs(n) }}>
+                            {cfg.is_paused ? 'Resume' : 'Pause'}
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500 w-12">Weight</span>
+                          <input type="range" min="0" max="10" step="1" value={cfg.weight}
+                            className="flex-1"
+                            onChange={e => { const n=[...amDistConfigs]; const w=+e.target.value; n[i]={...n[i], weight:w, is_paused:w===0}; setAmDistConfigs(n) }} />
+                          <span className="text-sm font-medium text-purple-600 w-4">{cfg.weight}</span>
+                        </div>
+                        <div className="mt-2 h-1 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${cfg.is_paused ? 'bg-red-300' : 'bg-purple-500'}`} style={{ width: `${cfg.is_paused ? 100 : share}%` }} />
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {!amDistConfigs.length && <div className="text-sm text-gray-400 col-span-2 py-4">No active AMs found.</div>}
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="font-medium text-sm">Unassigned AM leads ({unassignedAm.length})</div>
+                    <div className="text-xs text-gray-400 mt-0.5">AM Handling stage leads without an AM assigned</div>
+                  </div>
+                  <div className="flex gap-2">
+                    {Object.keys(amAssignments).length > 0 && (
+                      <button className="btn-success" onClick={confirmAmDistribution}>Confirm {Object.keys(amAssignments).length} assignments</button>
+                    )}
+                    <button
+                      className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
+                      onClick={distributeAllAm}
+                      disabled={!unassignedAm.length || !amDistConfigs.some(c=>!c.is_paused)}>
+                      Distribute all
+                    </button>
+                  </div>
+                </div>
+                <div className="table-wrap">
+                  <table className="data">
+                    <thead><tr><th>Client</th><th>City</th><th>BDO</th><th>Assigned AM</th></tr></thead>
+                    <tbody>
+                      {unassignedAm.map(l => (
+                        <tr key={l.id}>
+                          <td className="font-medium">{l.name}</td>
+                          <td className="text-gray-500">{l.city||'—'}</td>
+                          <td className="text-gray-500">{memberName(l.bdo_id)}</td>
+                          <td>
+                            {amAssignments[l.id]
+                              ? <span className="text-purple-600 font-medium text-sm">{memberName(amAssignments[l.id])}</span>
+                              : <select className="input py-1 text-xs" onChange={e => setAmAssignments(a=>({...a, [l.id]: e.target.value}))}>
+                                  <option value="">— Assign manually —</option>
+                                  {profiles.filter(p=>p.role==='am').map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                                </select>
+                            }
+                          </td>
+                        </tr>
+                      ))}
+                      {!unassignedAm.length && <tr><td colSpan={4} className="text-center py-8 text-gray-400">All AM leads are assigned</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
