@@ -13,7 +13,8 @@ const ROLE_NAV: Record<string, { label: string; href: string }[]> = {
   ],
   am: [
     { label: 'Dashboard', href: '/dashboard' },
-    { label: 'Leads', href: '/leads' },
+    { label: 'My Leads', href: '/my-leads' },
+    { label: 'Team Leads', href: '/leads' },
     { label: 'Pipeline', href: '/pipeline' },
     { label: 'Commission', href: '/commission' },
     { label: 'My Team', href: '/team' },
@@ -40,7 +41,8 @@ const ROLE_CARDS: Record<string, { label: string; href: string; desc: string }[]
     { label: 'Admin Settings', href: '/admin', desc: 'Commission & distribution' },
   ],
   am: [
-    { label: 'Leads', href: '/leads', desc: 'Team leads' },
+    { label: 'My Leads', href: '/my-leads', desc: 'Leads assigned directly to you' },
+    { label: 'Team Leads', href: '/leads', desc: 'All leads across your team' },
     { label: 'Pipeline', href: '/pipeline', desc: 'Team pipeline' },
     { label: 'Commission', href: '/commission', desc: 'Team commissions' },
     { label: 'My Team', href: '/team', desc: 'Your BDOs & their leads' },
