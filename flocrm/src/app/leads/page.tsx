@@ -27,6 +27,7 @@ export default function LeadsPage() {
   const [stageFilter, setStageFilter] = useState('')
   const [bdoFilter, setBdoFilter] = useState('')
   const [amFilter, setAmFilter] = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editLead, setEditLead] = useState<Lead | null>(null)
   const [loading, setLoading] = useState(false)
@@ -88,6 +89,7 @@ export default function LeadsPage() {
     if (stageFilter && l.stage !== stageFilter) return false
     if (bdoFilter && l.bdo_id !== bdoFilter) return false
     if (amFilter && l.am_id !== amFilter && !amBdoIds.includes(l.bdo_id || '')) return false
+    if (monthFilter && !l.updated_at.startsWith(monthFilter)) return false
     return true
   })
 
@@ -211,7 +213,7 @@ export default function LeadsPage() {
   const isAdmin = myProfile?.role === 'admin'
   const isAm = myProfile?.role === 'am'
   const isBdo = myProfile?.role === 'bdo'
-  const hasActiveFilters = bdoFilter || amFilter || stageFilter || search
+  const hasActiveFilters = bdoFilter || amFilter || stageFilter || search || monthFilter
 
   return (
     <div>
@@ -313,6 +315,10 @@ export default function LeadsPage() {
             placeholder="Search client name..."
             value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+        <input
+          type="month"
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-500"
+          value={monthFilter} onChange={e => setMonthFilter(e.target.value)} />
         <select
           className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none"
           value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
@@ -338,7 +344,7 @@ export default function LeadsPage() {
         {hasActiveFilters && (
           <button
             className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50"
-            onClick={() => { setSearch(''); setStageFilter(''); setBdoFilter(''); setAmFilter('') }}>
+            onClick={() => { setSearch(''); setStageFilter(''); setBdoFilter(''); setAmFilter(''); setMonthFilter('') }}>
             Clear filters
           </button>
         )}

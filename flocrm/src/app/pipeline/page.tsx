@@ -20,6 +20,7 @@ export default function PipelinePage() {
   const [bdoFilter, setBdoFilter] = useState('')
   const [amFilter, setAmFilter] = useState('')
   const [search, setSearch] = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
   const supabase = createClient()
 
   const fetchData = useCallback(async () => {
@@ -73,11 +74,12 @@ export default function PipelinePage() {
     if (search && !l.name.toLowerCase().includes(search.toLowerCase())) return false
     if (bdoFilter && l.bdo_id !== bdoFilter) return false
     if (amFilter && l.am_id !== amFilter && !amBdoIds.includes(l.bdo_id || '')) return false
+    if (monthFilter && !l.updated_at.startsWith(monthFilter)) return false
     return true
   })
 
   const totalDep = (lead: Lead) => (lead.deposits || []).reduce((s, d) => s + d.amount, 0)
-  const hasActiveFilters = bdoFilter || amFilter || search
+  const hasActiveFilters = bdoFilter || amFilter || search || monthFilter
 
   return (
     <div>
@@ -94,6 +96,10 @@ export default function PipelinePage() {
           className="flex-1 min-w-36 px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-500"
           placeholder="Search client..."
           value={search} onChange={e => setSearch(e.target.value)} />
+        <input
+          type="month"
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-500"
+          value={monthFilter} onChange={e => setMonthFilter(e.target.value)} />
         {(isAdmin || isAm) && (
           <select
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none"
@@ -113,7 +119,7 @@ export default function PipelinePage() {
         {hasActiveFilters && (
           <button
             className="px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-500 hover:bg-gray-50"
-            onClick={() => { setBdoFilter(''); setAmFilter(''); setSearch('') }}>
+            onClick={() => { setBdoFilter(''); setAmFilter(''); setSearch(''); setMonthFilter('') }}>
             Clear filters
           </button>
         )}

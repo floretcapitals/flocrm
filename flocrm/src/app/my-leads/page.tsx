@@ -23,6 +23,7 @@ export default function AmMyLeadsPage() {
   const [myProfile, setMyProfile] = useState<Profile | null>(null)
   const [search, setSearch] = useState('')
   const [stageFilter, setStageFilter] = useState('')
+  const [monthFilter, setMonthFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
   const [editLead, setEditLead] = useState<Lead | null>(null)
   const [loading, setLoading] = useState(false)
@@ -66,6 +67,7 @@ export default function AmMyLeadsPage() {
   const filtered = leads.filter(l => {
     if (search && !l.name.toLowerCase().includes(search.toLowerCase())) return false
     if (stageFilter && l.stage !== stageFilter) return false
+    if (monthFilter && !l.updated_at.startsWith(monthFilter)) return false
     return true
   })
 
@@ -139,16 +141,20 @@ export default function AmMyLeadsPage() {
             placeholder="Search client name..."
             value={search} onChange={e => setSearch(e.target.value)} />
         </div>
+        <input
+          type="month"
+          className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-purple-500"
+          value={monthFilter} onChange={e => setMonthFilter(e.target.value)} />
         <select
           className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none"
           value={stageFilter} onChange={e => setStageFilter(e.target.value)}>
           <option value="">All stages</option>
           {Object.entries(STAGES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        {(search || stageFilter) && (
+        {(search || stageFilter || monthFilter) && (
           <button
             className="px-3 py-2 border border-gray-200 rounded-lg text-xs text-gray-500 hover:bg-gray-50"
-            onClick={() => { setSearch(''); setStageFilter('') }}>
+            onClick={() => { setSearch(''); setStageFilter(''); setMonthFilter('') }}>
             Clear
           </button>
         )}

@@ -8,6 +8,7 @@ export default function CommissionPage() {
   const [myProfile, setMyProfile] = useState<any>(null)
   const [data, setData] = useState<any>({})
   const [loading, setLoading] = useState(true)
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7))
   const supabase = createClient()
 
   useEffect(() => {
@@ -32,13 +33,13 @@ export default function CommissionPage() {
       const { data: allProfiles } = await supabase
         .from('profiles').select('*').eq('is_active', true)
       const { data: tc } = await supabase
-        .from('trading_commissions').select('*')
+        .from('trading_commissions').select('*').eq('month', month)
 
       setData({ settings, bdoTiers, amTiers, taTiers, allLeads, allProfiles, tc })
       setLoading(false)
     }
     load()
-  }, [])
+  }, [month])
 
   if (loading) return (
     <div className="flex items-center justify-center py-20 text-gray-400">Loading...</div>
@@ -51,7 +52,9 @@ export default function CommissionPage() {
   const myId = myProfile?.id
 
   function totalDep(lead: any) {
-    return (lead.deposits || []).reduce((sum: number, d: any) => sum + d.amount, 0)
+    return (lead.deposits || [])
+      .filter((d: any) => d.deposit_date.startsWith(month))
+      .reduce((sum: number, d: any) => sum + d.amount, 0)
   }
 
   function bdoDepRate(totalDepAmt: number) {
@@ -111,9 +114,13 @@ export default function CommissionPage() {
     const pct = Math.min(100, r.dep / (s.bdo_dep_threshold || 1) * 100)
     return (
       <div>
-        <div className="mb-6">
-          <h1 className="text-xl font-medium">My Commission</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Current month — {myProfile.name}</p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-medium">My Commission</h1>
+            <p className="text-sm text-gray-400 mt-0.5">{myProfile.name}</p>
+          </div>
+          <input type="month" className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-500"
+            value={month} onChange={e => { setMonth(e.target.value); setLoading(true) }} />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <div className="bg-gray-50 rounded-xl p-4">
@@ -181,9 +188,13 @@ export default function CommissionPage() {
     const r = calcAnalyst(myId)
     return (
       <div>
-        <div className="mb-6">
-          <h1 className="text-xl font-medium">My Commission</h1>
-          <p className="text-sm text-gray-400 mt-0.5">Current month — {myProfile.name}</p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-medium">My Commission</h1>
+            <p className="text-sm text-gray-400 mt-0.5">{myProfile.name}</p>
+          </div>
+          <input type="month" className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-500"
+            value={month} onChange={e => { setMonth(e.target.value); setLoading(true) }} />
         </div>
         <div className="grid grid-cols-3 gap-3 mb-6">
           <div className="bg-gray-50 rounded-xl p-4">
@@ -233,9 +244,13 @@ export default function CommissionPage() {
     const pct = Math.min(100, amResult.achievePct)
     return (
       <div>
-        <div className="mb-6">
-          <h1 className="text-xl font-medium">Team Commission</h1>
-          <p className="text-sm text-gray-400 mt-0.5">{myProfile.name} — {myBdoList.length} BDOs</p>
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-xl font-medium">Team Commission</h1>
+            <p className="text-sm text-gray-400 mt-0.5">{myProfile.name} — {myBdoList.length} BDOs</p>
+          </div>
+          <input type="month" className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-500"
+            value={month} onChange={e => { setMonth(e.target.value); setLoading(true) }} />
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
           <div className="bg-gray-50 rounded-xl p-4">
@@ -327,8 +342,14 @@ export default function CommissionPage() {
 
   return (
     <div>
-      <div className="mb-6"><h1 className="text-xl font-medium">Commission</h1>
-        <p className="text-sm text-gray-400 mt-0.5">All roles — current month</p></div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h1 className="text-xl font-medium">Commission</h1>
+          <p className="text-sm text-gray-400 mt-0.5">All roles</p>
+        </div>
+        <input type="month" className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:outline-none focus:border-blue-500"
+          value={month} onChange={e => { setMonth(e.target.value); setLoading(true) }} />
+      </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
         <div className="bg-gray-50 rounded-xl p-4"><div className="text-xs text-gray-500 mb-1">BDO payouts</div>
