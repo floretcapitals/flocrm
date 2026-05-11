@@ -145,10 +145,17 @@ export default function AmMyLeadsPage() {
             notes: trdForm.notes || null,
             updated_at: new Date().toISOString(),
           }
+          let trdError
           if (trd?.id) {
-            await supabase.from('trd').update(trdData).eq('id', trd.id)
+            const { error } = await supabase.from('trd').update(trdData).eq('id', trd.id)
+            trdError = error
           } else {
-            await supabase.from('trd').insert({ ...trdData, lead_id: editLead.id, created_by: user!.id })
+            const { error } = await supabase.from('trd').insert({ ...trdData, lead_id: editLead.id, created_by: user!.id })
+            trdError = error
+          }
+          if (trdError) {
+            alert('Lead saved, but TRD could not be saved: ' + trdError.message)
+            return
           }
         }
       }
