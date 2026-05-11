@@ -37,17 +37,14 @@ export default function TradingPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  useEffect(() => {
-    if (!editLead) { setTrd(null); return }
-    supabase.from('trd').select('*').eq('lead_id', editLead.id).maybeSingle()
-      .then(({ data }) => setTrd(data as TRD | null))
-  }, [editLead?.id])
-
-  function openEdit(lead: Lead) {
+  async function openEdit(lead: Lead) {
     const entry = tc.find(t => t.lead_id === lead.id)
     setEditLead(lead)
     setNotes(lead.notes || '')
     setCommission(entry ? String(entry.commission_generated) : '')
+    setTrd(null)
+    const { data } = await supabase.from('trd').select('*').eq('lead_id', lead.id).maybeSingle()
+    setTrd(data as TRD | null)
   }
 
   async function save() {

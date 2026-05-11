@@ -80,22 +80,6 @@ export default function LeadsPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
-  useEffect(() => {
-    if (!editLead) { setTrd(null); return }
-    supabase.from('trd').select('*').eq('lead_id', editLead.id).maybeSingle()
-      .then(({ data }) => {
-        setTrd(data as TRD | null)
-        const empty = { account_number: '', cdc_account: '', account_type: '', platform: '', risk_profile: '', notes: '' }
-        setTrdForm(data ? {
-          account_number: data.account_number || '',
-          cdc_account: data.cdc_account || '',
-          account_type: data.account_type || '',
-          platform: data.platform || '',
-          risk_profile: data.risk_profile || '',
-          notes: data.notes || '',
-        } : empty)
-      })
-  }, [editLead?.id])
 
   const bdos = profiles.filter(p => p.role === 'bdo')
   const ams = profiles.filter(p => p.role === 'am')
@@ -123,10 +107,12 @@ export default function LeadsPage() {
     })
     setDeposits([])
     setNewDep({ amount: '', date: new Date().toISOString().split('T')[0] })
+    setTrd(null)
+    setTrdForm({ account_number: '', cdc_account: '', account_type: '', platform: '', risk_profile: '', notes: '' })
     setShowModal(true)
   }
 
-  function openEdit(lead: Lead) {
+  async function openEdit(lead: Lead) {
     setEditLead(lead)
     setForm({
       name: lead.name, phone: lead.phone || '', email: lead.email || '',
@@ -136,6 +122,20 @@ export default function LeadsPage() {
     })
     setDeposits(lead.deposits || [])
     setNewDep({ amount: '', date: new Date().toISOString().split('T')[0] })
+    setTrd(null)
+    setTrdForm({ account_number: '', cdc_account: '', account_type: '', platform: '', risk_profile: '', notes: '' })
+    const { data } = await supabase.from('trd').select('*').eq('lead_id', lead.id).maybeSingle()
+    setTrd(data as TRD | null)
+    if (data) {
+      setTrdForm({
+        account_number: data.account_number || '',
+        cdc_account: data.cdc_account || '',
+        account_type: data.account_type || '',
+        platform: data.platform || '',
+        risk_profile: data.risk_profile || '',
+        notes: data.notes || '',
+      })
+    }
     setShowModal(true)
   }
 
