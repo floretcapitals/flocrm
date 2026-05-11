@@ -50,36 +50,43 @@ export default function TradingPage() {
   async function save() {
     if (!editLead) return
     setSaving(true)
+    try {
+      const { error: notesError } = await supabase.from('leads').update({ notes }).eq('id', editLead.id)
+      if (notesError) { alert('Could not save notes: ' + notesError.message); return }
 
-    await supabase.from('leads').update({ notes }).eq('id', editLead.id)
+      const commValue = parseFloat(commission) || 0
 
-    const { data: existing } = await supabase
-      .from('trading_commissions')
-      .select('id, approved')
-      .eq('lead_id', editLead.id)
-      .eq('month', month)
-      .maybeSingle()
+      const { data: existing, error: fetchError } = await supabase
+        .from('trading_commissions')
+        .select('id, approved')
+        .eq('lead_id', editLead.id)
+        .eq('month', month)
+        .maybeSingle()
 
-    const commValue = parseFloat(commission) || 0
+      if (fetchError) { alert('Could not check commission: ' + fetchError.message); return }
 
-    if (existing) {
-      if (!existing.approved) {
-        await supabase.from('trading_commissions')
-          .update({ commission_generated: commValue })
-          .eq('id', existing.id)
+      if (existing) {
+        if (!existing.approved) {
+          const { error } = await supabase.from('trading_commissions')
+            .update({ commission_generated: commValue })
+            .eq('id', existing.id)
+          if (error) { alert('Could not update commission: ' + error.message); return }
+        }
+      } else {
+        const { error } = await supabase.from('trading_commissions').insert({
+          lead_id: editLead.id,
+          analyst_id: userId,
+          month,
+          commission_generated: commValue,
+        })
+        if (error) { alert('Could not save commission: ' + error.message); return }
       }
-    } else {
-      await supabase.from('trading_commissions').insert({
-        lead_id: editLead.id,
-        analyst_id: userId,
-        month,
-        commission_generated: commValue,
-      })
-    }
 
-    setSaving(false)
-    setEditLead(null)
-    fetchData()
+      setEditLead(null)
+      fetchData()
+    } finally {
+      setSaving(false)
+    }
   }
 
   const totalComm = tc.reduce((s, t) => s + t.commission_generated, 0)
