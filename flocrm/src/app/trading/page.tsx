@@ -10,7 +10,7 @@ export default async function TradingPage() {
   const month = new Date().toISOString().slice(0, 7)
 
   const [{ data: leads }, { data: tc }] = await Promise.all([
-    supabase.from('leads').select('*, deposits(*)').eq('analyst_id', user.id).eq('stage', 'trading'),
+    supabase.from('leads').select('*, deposits(*)').eq('analyst_id', user.id),
     supabase.from('trading_commissions').select('*').eq('analyst_id', user.id).eq('month', month)
   ])
 
