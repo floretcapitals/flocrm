@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Lead, TradingCommission } from '@/types'
+import type { Lead, TradingCommission, TRD } from '@/types'
 import { X } from 'lucide-react'
 
 const PKR = (n: number) => 'PKR ' + Math.round(n).toLocaleString()
@@ -16,6 +16,7 @@ export default function TradingPage() {
   const [notes, setNotes] = useState('')
   const [commission, setCommission] = useState('')
   const [saving, setSaving] = useState(false)
+  const [trd, setTrd] = useState<TRD | null>(null)
   const supabase = createClient()
 
   const fetchData = useCallback(async () => {
@@ -36,6 +37,12 @@ export default function TradingPage() {
 
   useEffect(() => { fetchData() }, [fetchData])
 
+  useEffect(() => {
+    if (!editLead) { setTrd(null); return }
+    supabase.from('trd').select('*').eq('lead_id', editLead.id).maybeSingle()
+      .then(({ data }) => setTrd(data as TRD | null))
+  }, [editLead?.id])
+
   function openEdit(lead: Lead) {
     const entry = tc.find(t => t.lead_id === lead.id)
     setEditLead(lead)
@@ -47,10 +54,8 @@ export default function TradingPage() {
     if (!editLead) return
     setSaving(true)
 
-    // Always save notes
     await supabase.from('leads').update({ notes }).eq('id', editLead.id)
 
-    // Upsert commission only if not already approved
     const { data: existing } = await supabase
       .from('trading_commissions')
       .select('id, approved')
@@ -196,7 +201,7 @@ export default function TradingPage() {
       {editLead && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-10 px-4"
           style={{ background: 'rgba(0,0,0,0.35)' }}>
-          <div className="bg-white rounded-2xl w-full max-w-lg p-6 shadow-xl">
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[88vh] overflow-y-auto p-6 shadow-xl">
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-base font-medium">{editLead.name}</h2>
               <button onClick={() => setEditLead(null)}>
@@ -207,6 +212,49 @@ export default function TradingPage() {
             <div className="grid grid-cols-2 gap-2 mb-4 p-3 bg-gray-50 rounded-xl text-sm">
               <div><span className="text-xs text-gray-400 uppercase tracking-wide">Phone</span><div className="font-medium mt-0.5">{editLead.phone || '—'}</div></div>
               <div><span className="text-xs text-gray-400 uppercase tracking-wide">City</span><div className="font-medium mt-0.5">{editLead.city || '—'}</div></div>
+            </div>
+
+            {/* TRD Section — read-only for trading analysts */}
+            <div className="border border-gray-100 rounded-xl p-4 mb-4 bg-gray-50">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-xs font-medium text-gray-700 uppercase tracking-wide">Trading Reference Document</span>
+                {trd
+                  ? <span className="text-xs px-1.5 py-0.5 bg-green-50 text-green-700 rounded font-medium">Filled</span>
+                  : <span className="text-xs px-1.5 py-0.5 bg-amber-50 text-amber-700 rounded font-medium">Not filled yet</span>
+                }
+              </div>
+              {trd ? (
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <span className="text-xs text-gray-400">Account No.</span>
+                    <div className="font-medium">{trd.account_number || '—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-400">CDC Account</span>
+                    <div className="font-medium">{trd.cdc_account || '—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-400">Account Type</span>
+                    <div className="font-medium">{trd.account_type || '—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-400">Platform</span>
+                    <div className="font-medium">{trd.platform || '—'}</div>
+                  </div>
+                  <div>
+                    <span className="text-xs text-gray-400">Risk Profile</span>
+                    <div className="font-medium">{trd.risk_profile || '—'}</div>
+                  </div>
+                  {trd.notes && (
+                    <div className="col-span-2">
+                      <span className="text-xs text-gray-400">Notes</span>
+                      <div className="font-medium">{trd.notes}</div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">TRD will be filled by the BDO or AM handling this client.</p>
+              )}
             </div>
 
             <div className="mb-4">

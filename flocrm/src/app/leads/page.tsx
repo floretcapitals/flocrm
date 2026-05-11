@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Lead, Profile, Deposit } from '@/types'
+import type { Lead, Profile, Deposit, TRD } from '@/types'
 import { Plus, Search, X, Upload } from 'lucide-react'
 import Papa from 'papaparse'
 
@@ -43,6 +43,10 @@ export default function LeadsPage() {
   const [newDep, setNewDep] = useState({
     amount: '', date: new Date().toISOString().split('T')[0]
   })
+  const [trd, setTrd] = useState<TRD | null>(null)
+  const [trdForm, setTrdForm] = useState({
+    account_number: '', cdc_account: '', account_type: '', platform: '', risk_profile: '', notes: ''
+  })
 
   const fetchData = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -75,6 +79,23 @@ export default function LeadsPage() {
   }, [])
 
   useEffect(() => { fetchData() }, [fetchData])
+
+  useEffect(() => {
+    if (!editLead) { setTrd(null); return }
+    supabase.from('trd').select('*').eq('lead_id', editLead.id).maybeSingle()
+      .then(({ data }) => {
+        setTrd(data as TRD | null)
+        const empty = { account_number: '', cdc_account: '', account_type: '', platform: '', risk_profile: '', notes: '' }
+        setTrdForm(data ? {
+          account_number: data.account_number || '',
+          cdc_account: data.cdc_account || '',
+          account_type: data.account_type || '',
+          platform: data.platform || '',
+          risk_profile: data.risk_profile || '',
+          notes: data.notes || '',
+        } : empty)
+      })
+  }, [editLead?.id])
 
   const bdos = profiles.filter(p => p.role === 'bdo')
   const ams = profiles.filter(p => p.role === 'am')
@@ -137,8 +158,14 @@ export default function LeadsPage() {
     }
   }
 
+  const TRD_STAGES = ['account_opened', 'am_handling', 'trading']
+
   async function saveLead() {
     if (!form.name.trim()) return alert('Client name required')
+    const userCanWriteTrd = isAdmin || isAm || isBdo
+    if (TRD_STAGES.includes(form.stage) && userCanWriteTrd && !trd && !trdForm.account_number.trim()) {
+      return alert('TRD is required: please fill in the Account Number before saving a lead at Account Opened stage or beyond.')
+    }
     setLoading(true)
     try {
       const { data: { user } } = await supabase.auth.getUser()
@@ -164,6 +191,27 @@ export default function LeadsPage() {
           lead_id: leadId!, amount: d.amount,
           deposit_date: d.deposit_date, created_by: user!.id
         })))
+      }
+
+      // Save TRD if stage requires it and user has write access
+      if (TRD_STAGES.includes(form.stage) && userCanWriteTrd && trdForm.account_number.trim()) {
+        const canWrite = !trd || trd.created_by === user!.id
+        if (canWrite) {
+          const trdData = {
+            account_number: trdForm.account_number || null,
+            cdc_account: trdForm.cdc_account || null,
+            account_type: trdForm.account_type || null,
+            platform: trdForm.platform || null,
+            risk_profile: trdForm.risk_profile || null,
+            notes: trdForm.notes || null,
+            updated_at: new Date().toISOString(),
+          }
+          if (trd?.id) {
+            await supabase.from('trd').update(trdData).eq('id', trd.id)
+          } else {
+            await supabase.from('trd').insert({ ...trdData, lead_id: leadId!, created_by: user!.id })
+          }
+        }
       }
 
       setShowModal(false)
@@ -516,6 +564,75 @@ export default function LeadsPage() {
               <textarea className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500 min-h-16 resize-y"
                 value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} />
             </div>
+
+            {/* TRD Section */}
+            {TRD_STAGES.includes(form.stage) && (
+              <div className="border-t border-gray-100 pt-4 mb-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <div className="text-xs font-medium text-gray-700 uppercase tracking-wide">Trading Reference Document (TRD)</div>
+                    {!trd && <span className="text-xs px-1.5 py-0.5 bg-red-50 text-red-600 rounded font-medium">Required</span>}
+                    {trd && <span className="text-xs px-1.5 py-0.5 bg-green-50 text-green-700 rounded font-medium">Filled</span>}
+                  </div>
+                  {trd && trd.created_by !== myProfile?.id && (
+                    <span className="text-xs text-gray-400">Created by {memberName(trd.created_by)}</span>
+                  )}
+                </div>
+                {trd && trd.created_by !== myProfile?.id && !isAdmin ? (
+                  <div className="bg-gray-50 rounded-xl p-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    {trd.account_number && <div><span className="text-xs text-gray-400">Account No.</span><div className="font-medium">{trd.account_number}</div></div>}
+                    {trd.cdc_account && <div><span className="text-xs text-gray-400">CDC Account</span><div className="font-medium">{trd.cdc_account}</div></div>}
+                    {trd.account_type && <div><span className="text-xs text-gray-400">Type</span><div className="font-medium">{trd.account_type}</div></div>}
+                    {trd.platform && <div><span className="text-xs text-gray-400">Platform</span><div className="font-medium">{trd.platform}</div></div>}
+                    {trd.risk_profile && <div><span className="text-xs text-gray-400">Risk Profile</span><div className="font-medium">{trd.risk_profile}</div></div>}
+                    {trd.notes && <div className="col-span-2"><span className="text-xs text-gray-400">TRD Notes</span><div className="font-medium">{trd.notes}</div></div>}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Account Number *</label>
+                      <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                        placeholder="Broker account number"
+                        value={trdForm.account_number} onChange={e => setTrdForm(f => ({ ...f, account_number: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">CDC Account Number</label>
+                      <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                        placeholder="CDC / investor account"
+                        value={trdForm.cdc_account} onChange={e => setTrdForm(f => ({ ...f, cdc_account: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Account Type</label>
+                      <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                        value={trdForm.account_type} onChange={e => setTrdForm(f => ({ ...f, account_type: e.target.value }))}>
+                        <option value="">Select type</option>
+                        <option>Individual</option><option>Joint</option><option>Corporate</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Trading Platform</label>
+                      <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                        placeholder="e.g. PSX, MT5"
+                        value={trdForm.platform} onChange={e => setTrdForm(f => ({ ...f, platform: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">Risk Profile</label>
+                      <select className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                        value={trdForm.risk_profile} onChange={e => setTrdForm(f => ({ ...f, risk_profile: e.target.value }))}>
+                        <option value="">Select profile</option>
+                        <option>Conservative</option><option>Moderate</option><option>Aggressive</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1 uppercase tracking-wide">TRD Notes</label>
+                      <input className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-blue-500"
+                        placeholder="Additional remarks"
+                        value={trdForm.notes} onChange={e => setTrdForm(f => ({ ...f, notes: e.target.value }))} />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="border-t border-gray-100 pt-4 mb-4">
               <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3">Deposits</div>

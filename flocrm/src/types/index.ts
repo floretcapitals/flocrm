@@ -101,6 +101,20 @@ export interface TaTier {
   notes: string | null
 }
 
+export interface TRD {
+  id: string
+  lead_id: string
+  created_by: string
+  account_number: string | null
+  cdc_account: string | null
+  account_type: string | null
+  platform: string | null
+  risk_profile: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
 export interface DistributionConfig {
   bdo_id: string
   weight: number
